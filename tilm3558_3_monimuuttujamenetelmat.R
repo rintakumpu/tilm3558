@@ -19,7 +19,7 @@ lataa_kirjasto <- function(kirjasto) {
 lapply(c("MASS", "MissMech", "tables"), lataa_kirjasto)
 
 # Ladataan havaintoaineisto, 
-ek2011 <- read.csv("https://raw.githubusercontent.com/rintakumpu/tilm3557/master/EK2011_filtered.csv", header=TRUE, row.names=NULL, fileEncoding = "UTF-8-BOM");
+ek2011 <- read.csv("https://raw.githubusercontent.com/rintakumpu/tilm3558/master/EK2011.csv", header=TRUE, row.names=NULL, fileEncoding = "UTF-8-BOM");
 
 # TestMCARNormality(ek2011)
 # Hypothesis of MCAR is rejected at  0.05 significance level.
