@@ -1,7 +1,7 @@
 #########################################
-# TILM3558 Harjoitustyö, Osa 1, R-koodi #
+# TILM3558 Harjoitustyö, Osa 3, R-koodi #
 # Lasse Rintakumpu, 63555               #
-# 17.8.2015                             #
+# 26.8.2015                             #
 #########################################
 
 # Asetetaan työhakemisto
@@ -16,195 +16,117 @@ lataa_kirjasto <- function(kirjasto) {
 }
 
 # Ladataan/asennetaan käytetyt kirjastot
-lapply(c("MASS", "MissMech", "tables"), lataa_kirjasto)
+lapply(c("psych", "corrplot", "nFactors"), lataa_kirjasto)
 
-# Ladataan havaintoaineisto, 
-ek2011 <- read.csv("https://raw.githubusercontent.com/rintakumpu/tilm3558/master/EK2011.csv", header=TRUE, row.names=NULL, fileEncoding = "UTF-8-BOM");
+# Ladataan havaintoaineisto ja valitaan tiedot satunnaisesti valituilta 1000 riviltä
+pankkiotos <- read.csv("https://raw.githubusercontent.com/rintakumpu/tilm3558/master/pankkiotos_filtered.csv", sep=",", dec=".", header=TRUE, row.names=NULL, fileEncoding = "UTF-8-BOM")
+pankkiotos <- as.data.frame(pankkiotos[pankkiotos$filter==1,])
 
-# TestMCARNormality(ek2011)
-# Hypothesis of MCAR is rejected at  0.05 significance level.
-# The multivariate normality test is inconclusive. 
+# Tallennetaan pääkomponenttianalyysissa käytettävät muutujat omaan
+# matriisiinsa
+pankkiotos_pca <- pankkiotos[,69:109]
 
-# Hoidetaan puuttuvat havainnot poistamalla tilastoyksiköt joissa puuttuvia havaintoja
-ek2011 <- na.omit(read.csv("https://raw.githubusercontent.com/rintakumpu/tilm3557/master/EK2011_filtered.csv", header=TRUE, row.names=NULL, fileEncoding = "UTF-8-BOM"));
+######################################################
+# 1. Pääkomponenttianalyysin edellytysten tarkastelu # 
+######################################################
 
-# Tallennetaan käsiteltävä data omiin muuttujiinsa
-sukupuoli <- ek2011$d2[ek2011$filter==1] # Sukupuoli
-aanestys2007 <- ek2011$q23[ek2011$filter==1] #Äänestysaktiivisuus vuoden 2007 vaaleissa
-omasupu <- ek2011$k23[ek2011$filter==1] # Oman sukupuolen äänestäminen
+# Tarkastellaan muuttujien välisten korrelaatioiden merkitsevyyttä
+# Funktio korrelaatioiden läpikäyntiin
+cor.mtest <- function(mat, conf.level = 0.95) {
+  mat <- as.matrix(mat)
+  n <- ncol(mat)
+  p.mat <- lowCI.mat <- uppCI.mat <- sig.mat <- matrix(NA, n, n)
+  diag(p.mat) <- 0
+  diag(lowCI.mat) <- diag(uppCI.mat) <- 1
+  for (i in 1:(n - 1)) {
+    for (j in (i + 1):n) {
+      tmp <- cor.test(mat[, i], mat[, j], conf.level = conf.level)
+      p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+      lowCI.mat[i, j] <- lowCI.mat[j, i] <- tmp$conf.int[1]
+      uppCI.mat[i, j] <- uppCI.mat[j, i] <- tmp$conf.int[2]
+      
+      # Kuuluuko nolla luottamusvälille?
+      if(tmp$conf.int[1]<=0 & tmp$conf.int[2]>=0) {
+        sig.mat[i,j] <- sig.mat[j,i] <- FALSE
+      } else { sig.mat[i,j] <- sig.mat[j,i] <- TRUE }
+    }
+  }
+  # return(list(p.mat, lowCI.mat, uppCI.mat))
+  # Palauttaa listan, jossa merkitsevät korrelaatiot TRUE
+  return(sig.mat)
+}
 
-########################################
-# 1. Frekvenssit ja ristiintaulukointi # 
-########################################
+korrelaatiot_p005<-cor.mtest(pankkiotos_pca, 0.95)
+sum(unlist(korrelaatiot_p005), na.rm=TRUE) # 816 / 1640 (41*40, eli korrelaatiot muuttujien itsensä kanssa korrelaatiot poistettu) 
+# => 50% merkitseviä
 
-# Luodaan frekvenssitaulut
-sukupuoli_t<-table(sukupuoli)
-sukupuoli_t<-addmargins(sukupuoli_t)
-row.names(sukupuoli_t) <- c("Mies", "Nainen", "Yhteensä")
-sukupuoli_t<-cbind( f=sukupuoli_t, Prosenttiosuus=prop.table(sukupuoli_t)*2)
+korrelaatiot_p01<-cor.mtest(pankkiotos_pca, 0.90)
+sum(unlist(korrelaatiot_p01), na.rm=TRUE) # 914 / 1640 => 56% merkitseviä
 
-#           f     Prosenttiosuus
-#Mies     300      0.5016722
-#Nainen   298      0.4983278
-#Yhteensä 598      1.0000000
+# Muuttujat juuri ja juuri sopivia pääkomponenttianalyysiin
+# Tarkastellaan vielä korrelaatiota
 
-aanestys2007_t<-table(aanestys2007)
-aanestys2007_t<-addmargins(aanestys2007_t)
-row.names(aanestys2007_t) <- c("Kyllä", "Ei", "Ei äänioikeutta", "Ei halua sanoa", "Ei osaa sanoa","Yhteensä")
-aanestys2007_t<-cbind( f=aanestys2007_t, Prosenttiosuus=prop.table(aanestys2007_t)*2)
+korrelaatiot<-round(cor(pankkiotos_pca),2)
+# Ainoastaan hyvin heikkoja korrelaatiot (kaikki korrelaatiot <0.2)
+# sisältävät muuttujat
+korrelaatiot[7,] # asuntolaina_b_kpl_luok
+korrelaatiot[8,] # vakuutus_b_luok
+korrelaatiot[9,] # vakuutus_c_luok
+korrelaatiot[17,] # kayttotili_vel_luok
+korrelaatiot[25,] # asuntolaina_d_kpl_luok
+korrelaatiot[30,] # asuntolaina_e_kpl_luok
+korrelaatiot[36,] # toimeksianto_a_kpl_luok
+korrelaatiot[37,] # toimeksianto_b_kpl_luok
+pudotettavat <- c("asuntolaina_b_kpl_luok", "vakuutus_b_luok", "vakuutus_c_luok", "kayttotili_vel_luok",  "asuntolaina_d_kpl_luok", "asuntolaina_e_kpl_luok", "toimeksianto_a_kpl_luok", "toimeksianto_b_kpl_luok")
 
-#                  f  Prosenttiosuus
-#Kyllä           525    0.877926421
-#Ei               45    0.075250836
-#Ei äänioikeutta  23    0.038461538
-#Ei halua sanoa    1    0.001672241
-#Ei osaa sanoa     4    0.006688963
-#Yhteensä        598    1.000000000
+# Pudotetaan nämä
+pankkiotos_pca_edit <- pankkiotos_pca[,!(names(pankkiotos_pca) %in% pudotettavat)]
 
-omasupu_t<-table(omasupu)
-omasupu_t<-addmargins(omasupu_t)
-row.names(omasupu_t) <- c("Kyllä", "Ei", "Ei osaa sanoa", "Yhteensä")
-omasupu_t<-cbind( f=omasupu_t, Prosenttiosuus=prop.table(omasupu_t)*2)
+# Kaiser-Meyer-Olkin (KMO) Measure of Sampling Adequacy
+KMO(pankkiotos_pca_edit)[[1]] # 0.718899 > 0.6
+# KMO OK
 
-#               f   Prosenttiosuus
-#Kyllä         347    0.580267559
-#Ei            246    0.411371237
-#Ei osaa sanoa   5    0.008361204
-#Yhteensä      598    1.000000000
+# Bartlettin sfäärisyystesti on herkkä poikkeamille normaalijakaumista,
+# normaalisuus datan luokitelluilla muuttujilla tuskin pätee,
+# testataan kuitenkin satunnaisesti pari muuttujaa:
 
-# Poistetaan pienifrekvenssiset luokat, tallennetaan data
-# uusiin _mod-muuttujiin
-aanestys2007_mod<-aanestys2007[!aanestys2007 %in% c(7,8)]
-sukupuoli_mod<-sukupuoli[!aanestys2007 %in% c(7,8)]
-omasupu_mod<-omasupu[!aanestys2007 %in% c(7,8)]
+shapiro.test(pankkiotos_pca_edit[,sample(1:33,1)]) # W = 0.6501, p-value < 2.2e-16
+shapiro.test(pankkiotos_pca_edit[,sample(1:33,1)]) # W = 0.309, p-value < 2.2e-16
+shapiro.test(pankkiotos_pca_edit[,sample(1:33,1)]) # W = 0.6581, p-value < 2.2e-16
 
-sukupuoli_mod<-sukupuoli_mod[!omasupu_mod %in% c(3)]
-aanestys2007_mod<-aanestys2007_mod[!omasupu_mod %in% c(3)]
-omasupu_mod<-omasupu_mod[!omasupu_mod %in% c(3)] # Vektori ylikirjoitetaan
+# Normaalisuusoletus ei päde, unohdetaan Bartlettin testi
 
-ct<-xtabs(~aanestys2007_mod+omasupu_mod+sukupuoli_mod) # Luodaan kolmen muuttujan ristiintaulukko
+#############################
+# 2. Pääkomponenttianalyysi #
+#############################
 
-#   Sukupuoli = Mies
-#                             Oman sukupuolen äänestäminen
-#   Äänestäminen vuonna 2007  Kyllä Ei
-#                      Kyllä  170   91
-#                         Ei  14    8
-#            Ei äänioikeutta  7     4
+# Määritellään 
+# Determine Number of Factors to Extract
+ominaisarvot <- eigen(cor(pankkiotos_pca_edit)) # Haetaan ominaisarvot
+ap <- parallel(subject=nrow(pankkiotos_pca_edit),var=ncol(pankkiotos_pca_edit),
+               rep=100,cent=.05)
+nScree(x=ominaisarvot$values, aparallel=ap$eigen$qevpea)
 
-#   Sukupuoli = Nainen
-#                             Oman sukupuolen äänestäminen
-#   Äänestäminen vuonna 2007  Kyllä Ei
-#                      Kyllä  140   119
-#                         Ei  12    11
-#            Ei äänioikeutta  1     11
+# noc naf nparallel nkaiser
+# 9   1   9         11
 
-###############################################################
-# 2. Muuttujien välisen riippuvuuden loglineaarinen mallinnus # 
-###############################################################
+# => Päädytään yhdeksään pääkomponenttiin
+malli_pca <- principal(pankkiotos_pca, nfactors=9, rotate="promax")
+# Fit based upon off diagonal values = 0.9
 
-# Askelletaan taaksepäin täydestä mallista
-malli1 <- loglm(~aanestys2007_mod*omasupu_mod*sukupuoli_mod, data=ct)
-drop1(malli1, scope = ~aanestys2007_mod*omasupu_mod*sukupuoli_mod, test="Chisq", trace=TRUE)
+# Pääkomponenteille latautuneet muuttujat:
 
-#Single term deletions
-#Model:
-#~aanestys2007_mod * omasupu_mod * sukupuoli_mod
-#                                           Df    AIC    LRT Pr(>Chi)  
-#<none>                                        24.000                  
-#aanestys2007_mod                            0 24.000 0.0000           
-#omasupu_mod                                 0 24.000 0.0000           
-#sukupuoli_mod                               0 24.000 0.0000           
-#aanestys2007_mod:omasupu_mod                0 24.000 0.0000           
-#aanestys2007_mod:sukupuoli_mod              0 24.000 0.0000           
-#omasupu_mod:sukupuoli_mod                   0 24.000 0.0000           
-#aanestys2007_mod:omasupu_mod:sukupuoli_mod  2 25.564 5.5641  0.06191 .
 
-# Poistetaan aanestys2007_mod:omasupu_mod:sukupuoli_mod ei-merkitsevänä
-malli2 <- loglm(~aanestys2007_mod*omasupu_mod*sukupuoli_mod-aanestys2007_mod:omasupu_mod:sukupuoli_mod, data=ct)
-drop1(malli2, scope = ~aanestys2007_mod*omasupu_mod*sukupuoli_mod-aanestys2007_mod:omasupu_mod:sukupuoli_mod, test="Chisq")
+# # 2. Talleta havaintomatriisiin uusiksi muuttujiksi  
+# pääkomponenttipistemäärät.     
+# 3. Nimeä uudet muuttujat (pääkomponentteihin  
+# latautuneiden muuttujien mukaisesti).   
 
-#Single term deletions
-#Model:
-#  ~aanestys2007_mod * omasupu_mod * sukupuoli_mod - aanestys2007_mod:omasupu_mod:sukupuoli_mod
-#                               Df    AIC     LRT Pr(>Chi)   
-#<none>                            25.564                    
-#aanestys2007_mod                0 25.564  0.0000            
-#omasupu_mod                     0 25.564  0.0000            
-#sukupuoli_mod                   0 25.564  0.0000            
-#aanestys2007_mod:omasupu_mod    2 27.038  5.4743  0.06476 . 
-#aanestys2007_mod:sukupuoli_mod  2 21.592  0.0284  0.98590   
-#omasupu_mod:sukupuoli_mod       1 33.668 10.1034  0.00148 **
+#######################
+# 3. Klusterianalyysi #
+#######################
 
-#Poistetaan aanestys2007_mod:omasupu_mod ja aanestys2007_mod:sukupuoli_mod 
-#mallista ei-merkitsevinä. omasupu_mod:sukupuoli_mod jää malliin merkitsevänä 
-#p = 0.00148
-malli3 <- loglm(~aanestys2007_mod+omasupu_mod+sukupuoli_mod+omasupu_mod:sukupuoli_mod, data=ct)
-drop1(malli3, scope = ~aanestys2007_mod+omasupu_mod+sukupuoli_mod+omasupu_mod:sukupuoli_mod, test="Chisq")
+# 4. Käytä näitä uusia muuttujia klusterianalyysissä, 
+# jossa muodostat asiakasryhmiä tilanteeseen sopivilla 
+# menetelmillä. Kuvaile muodostamiasi ryhmiä. 
 
-#Single term deletions
-#Model:
-#  ~aanestys2007_mod + omasupu_mod + sukupuoli_mod + omasupu_mod:sukupuoli_mod
-#                           Df    AIC    LRT  Pr(>Chi)    
-#<none>                        23.11                     
-#aanestys2007_mod           2 802.86 783.75 < 2.2e-16 ***
-#omasupu_mod                0  23.11   0.00              
-#sukupuoli_mod              0  23.11   0.00              
-#omasupu_mod:sukupuoli_mod  1  31.26  10.15  0.001444 ** 
-
-# Lopulliseen malliin jäävät omasupu_mod:sukupuoli_mod
-# ja aanestys2007_mod
-
-malli4 <- loglm(~aanestys2007_mod+omasupu_mod:sukupuoli_mod, data=ct)
-
-# Standardoidut jäännökset
-residuals(malli4)
-
-#, , sukupuoli_mod = 1
-#omasupu_mod
-#aanestys2007_mod           1            2
-#               1  0.08365801 -0.009267545
-#               2 -0.16262825  0.041693017
-#               3 -0.17421025 -0.014421100
-
-#, , sukupuoli_mod = 2
-#omasupu_mod
-#aanestys2007_mod           1           2
-#               1  0.40122738 -0.51385698
-#               2  0.08463937  0.06347555
-#               3 -2.52803825  2.05395004
-
-# Yhteensopivuustesti
-summary(malli4)
-
-# Statistics:
-#                       X^2 df P(> X^2)
-# Likelihood Ratio 11.11174  6 0.08498371
-# Pearson          10.10498  6 0.12030011
-
-#####################################################
-# 3. Mallin yhteyksien jatkotarkastelu ja tulkinta  #
-#####################################################
-
-# Mallin generoiva luokka on {omasupu_mod*sukupuoli_mod, aanestys2007_mod}  
-# Mallissa on yksi yhteys, Tulkitaan yhteyttä ristiintaulukoimalla:
-
-omasupu_mod <- factor(omasupu_mod, levels=c(1,2), labels=c("Kyllä","Ei"))
-sukupuoli_mod <- factor(sukupuoli_mod, levels=c(1,2), labels=c("Mies", "Nainen"))
-ct2 <- tabular((Sukupuoli=sukupuoli_mod)~(Heading(Oman_sukupuolen_aanestaminen)*omasupu_mod*(Percent("row")+ 1)))
-# ct2_latex <- latex(ct2)
-
-#           Oman sukupuolen äänestäminen
-#           Kyllä    Ei         
-# Sukupuoli Percent  All Percent All
-# Mies      64.97    191 35.03   103
-# Nainen    52.04    153 47.96   141
-
-chisq.test(table(sukupuoli_mod, omasupu_mod))
-
-# Pearson's Chi-squared test with Yates' continuity correction
-# data:  table(sukupuoli_mod, omasupu_mod)
-# X-squared = 9.5903, df = 1, p-value = 0.001956
-
-# Taulukon perusteella miehet näyttäisivät äänestävän naisia
-# useammin omaa sukupuolta edustavaa ehdokasta. Edellisissä
-# vaaleissa äänestäminen ei vaikuta tähän käyttäytymiseen.
