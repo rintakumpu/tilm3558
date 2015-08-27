@@ -18,6 +18,20 @@ lataa_kirjasto <- function(kirjasto) {
 # Ladataan/asennetaan käytetyt kirjastot
 lapply(c("psych", "corrplot", "nFactors", "GPArotation", "mclust", "modeltools", "fpc", "cluster"), lataa_kirjasto)
 
+# Funktio poikkeavien havaintojen poistamiseen klusterista
+poikkeavatHavainnot <- function(data, klusteri_kmeans, klusteri_numero, havaintojenMaara=1, poisto=FALSE) {
+  keskustat <- klusteri_kmeans$centers[klusteri_kmeans$cluster[klusteri_kmeans$cluster==klusteri_numero], ]
+  etaisyydet <- sqrt(rowSums((data[klusteri_kmeans$cluster==klusteri_numero] - keskustat)^2))
+  ph<-order(etaisyydet, decreasing=T)[1:havaintojenMaara]
+  if(poisto==FALSE) {
+    # Palauta poistettavat IDt
+    return(ph)
+  } else {
+    # Palauta data, josta poistetu arvot
+    return(data[-ph,]) 
+  }
+}
+
 # Ladataan havaintoaineisto ja valitaan tiedot satunnaisesti valituilta 1000 riviltä
 pankkiotos <- read.csv("https://raw.githubusercontent.com/rintakumpu/tilm3558/master/pankkiotos_filtered.csv", sep=",", dec=".", header=TRUE, row.names=NULL, fileEncoding = "UTF-8-BOM")
 pankkiotos <- as.data.frame(pankkiotos[pankkiotos$filter==1,])
@@ -283,24 +297,53 @@ pca_pistemaarat[klusterit_kmeans$cluster==3,] #130, 296, 2047
 # (kolmen havainnon perusteella ei järkevää rakentaa asiakassegmenttiä)
 pca_pistemaarat_klusterit <- pca_pistemaarat[klusterit_kmeans2$cluster!=3,]
 
-# Poistetaan klusterisarake
 klusterit_maara <- 5
 klusterit_hclust <- hclust(dist(pca_pistemaarat_klusterit), method="average")
 # Etsitään keskukset
 klusterit_keskukset <- as.matrix(tapply(pca_pistemaarat_klusterit, list(rep(cutree(klusterit_hclust, klusterit_maara), ncol(pca_pistemaarat_klusterit)), col(pca_pistemaarat_klusterit)), mean))
 colnames(klusterit_keskukset) <- as.list(dimnames(pca_pistemaarat_klusterit)[[2]])
-klusterit_kmeans3 <- kmeans(pca_pistemaarat_klusterit, centers=klusterit_keskukset)
+klusterit_kmeans3 <- kmeans(pca_pistemaarat_klusterit, centers=klusterit_keskukset, iter.max=50)
 plotcluster(pca_pistemaarat_klusterit, klusterit_kmeans3$cluster)
 pdf('kmeans_5_klusteria_b.pdf')
 dev.off()
 
-# Saadaan selkeät kolme klusteria
-# klusterit 1 ja 3 ovat vahvasti päällekäisiä, joten ne
-# yhdistetään ne
-pca_pistemaarat_klusterit <- pca_pistemaarat[klusterit_kmeans2$cluster!=3,]
+# Saadaan selkeät kolme klusteria, joista yksi koostuu
+# klustereista 1, 3 ja 5
 
-distances <- sqrt(rowSums((pca_pistemaarat - klusterit_keskukset)^2))
+# Tulostetaan klusteriprofiilit
+klusterit_kmeans3$centers
 
-# 4. Käytä näitä uusia muuttujia klusterianalyysissä, 
-# jossa muodostat asiakasryhmiä tilanteeseen sopivilla 
-# menetelmillä. Kuvaile muodostamiasi ryhmiä. 
+#           a1_kayttotili a2_saastotili a3_rahasto    a4_laina    a5_osake  a6_vakuutus
+# klusteri1    -0.8047753    -0.4519664 -0.2739878 -0.18701888 -0.28499522 -0.333005011
+# klusteri2     0.2313708     0.1827550  0.6026877 -0.04420253  3.40812615 -0.004559621
+# klusteri3     0.7497662    -0.2982691  0.5846725 -0.08088073 -0.33915974  0.001166909
+# klusteri4     0.2453241     0.3970253  0.7726770  5.02865062  0.93435144 -0.260605398
+# klusteri5     0.6824509     1.5869745 -0.6884828 -0.36437771 -0.08396267  0.923484347
+
+#                a7_tiski
+# klusteri1   -0.19861906
+# klusteri2    0.08569227
+# klusteri3    0.30040246
+# klusteri4   -0.10219167
+# klusteri5   -0.21107184
+
+# Klusteri1: Ei profiloivaa muuttujaa / pienet keskiarvot
+# Klusteri5: a2_saastotili, a6_vakuutus
+# Klusteri3: a1_kayttotili, a7_tiski
+
+# Klusteri2: a5_osake
+# Klusteri4: a4_laina, a3_rahasto
+
+klusterit_kmeans3$size
+#      1   2   3   4   5
+#[1] 445  60 294  33 165
+
+# Mahdolliset asiakassegmentit =>
+# 1: Tiliasiakkaat (käyttö- ja säästö) 2: Osakeasiakkaat 3: Laina-asiakkaat
+# Rahastot suht tasaisesti klustereiden 2, 3 ja 4 kesken
+# Vakuutukset riippuen yrityksen strategiasta vakuutusten suhteen
+
+# Suurin klusteri no 1 ... passiiviset asiakkaat
+# myyntipotentiaali mutta jos ei ostohalukkuutta, kannattaa klusterilta 
+# todennäköisesti alkaa periä suurempia "tilinhoito"- ja "palvelu"maksuja,
+# mitä on helppo perustella esim. kasvaneilla kustannuksilla
