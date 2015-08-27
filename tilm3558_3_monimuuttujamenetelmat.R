@@ -1,7 +1,7 @@
 #########################################
 # TILM3558 Harjoitustyö, Osa 3, R-koodi #
 # Lasse Rintakumpu, 63555               #
-# 26.8.2015                             #
+# 28.8.2015                             #
 #########################################
 
 # Asetetaan työhakemisto
@@ -16,7 +16,7 @@ lataa_kirjasto <- function(kirjasto) {
 }
 
 # Ladataan/asennetaan käytetyt kirjastot
-lapply(c("psych", "corrplot", "nFactors", "GPArotation"), lataa_kirjasto)
+lapply(c("psych", "corrplot", "nFactors", "GPArotation", "mclust", "modeltools", "fpc", "cluster"), lataa_kirjasto)
 
 # Ladataan havaintoaineisto ja valitaan tiedot satunnaisesti valituilta 1000 riviltä
 pankkiotos <- read.csv("https://raw.githubusercontent.com/rintakumpu/tilm3558/master/pankkiotos_filtered.csv", sep=",", dec=".", header=TRUE, row.names=NULL, fileEncoding = "UTF-8-BOM")
@@ -42,7 +42,7 @@ cor.mtest <- function(mat, conf.level = 0.95) {
     for (j in (i + 1):n) {
       tmp <- cor.test(mat[, i], mat[, j], conf.level = conf.level)
       p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
-      lowCI.mat[i, j] <- lowCI.mat[j, i] <- tmp$conf.int[1]
+      lowCI.mat[i, j] <- lowCI.2mat[j, i] <- tmp$conf.int[1]
       uppCI.mat[i, j] <- uppCI.mat[j, i] <- tmp$conf.int[2]
       
       # Kuuluuko nolla luottamusvälille?
@@ -214,7 +214,6 @@ as.matrix(malli_pca2$communality)
 
 malli_pca2$loadings
 
-
 # PC1: automaattinostoja_luok, pankkikorttilkm_luok, maksuautomaattitapahtumia_luok,
 # ottoja_luok, pkorttimaksuja_luok, panoja_luok, palveluja_kpl_luok, 
 # tilinylityspaivat_luok
@@ -238,14 +237,70 @@ malli_pca2$loadings
 # Tallennetaan pääkomponenttipistemäärät
 pca_pistemaarat <- as.matrix(malli_pca2$scores)
 
-# Nimetään uudet muuttujat asiakasryhmien mukaan
+# Nimetään uudet muuttujat niille latautuneiden muuttujien / palvelutyyppien mukaan
 colnames(pca_pistemaarat) <- c("a1_kayttotili","a2_saastotili", "a3_rahasto", "a4_laina", "a5_osake", "a6_vakuutus", "a7_tiski")
 
 #######################
 # 3. Klusterianalyysi #
 #######################
 
+# Valitaan klusterianalyysiin kaikki a-muuttujat, a1-a7
+malli_clust <- Mclust(pca_pistemaarat)
+# best model: diagonal, varying volume and shape (VVI) with 5 components
+klusterit_maara <- 5
+klusterit_hclust <- hclust(dist(pca_pistemaarat), method="average")
+# Etsitään keskukset
+klusterit_keskukset <- as.matrix(tapply(pca_pistemaarat, list(rep(cutree(klusterit_hclust, klusterit_maara), ncol(pca_pistemaarat)), col(pca_pistemaarat)), mean))
+colnames(klusterit_keskukset) <- as.list(dimnames(pca_pistemaarat)[[2]])
+
+# Siirytään k-means klusterointiin, käytetään hierarkisella
+# klusteroinnilla haettuja keskuksia
+klusterit_kmeans <- kmeans(pca_pistemaarat, centers=klusterit_keskukset)
+# cluster means
+# aggregate(pca_pistemaarat,by=list(klusterit_kmeans$cluster),FUN=mean)
+plotcluster(pca_pistemaarat, klusterit_kmeans$cluster)
+pdf('kmeans_5_klusteria.pdf')
+dev.off()
+
+# Graafista havaitaan, että klusteriin kolme päätyy vain kolme
+# havaintoa, lasketaan klusterien määrää neljään
+klusterit_maara <- 4
+klusterit_hclust <- hclust(dist(pca_pistemaarat), method="average")
+# Etsitään keskukset
+klusterit_keskukset <- as.matrix(tapply(pca_pistemaarat, list(rep(cutree(klusterit_hclust, klusterit_maara), ncol(pca_pistemaarat)), col(pca_pistemaarat)), mean))
+colnames(klusterit_keskukset) <- as.list(dimnames(pca_pistemaarat)[[2]])
+klusterit_kmeans2 <- kmeans(pca_pistemaarat, centers=klusterit_keskukset)
+plotcluster(pca_pistemaarat, klusterit_kmeans2$cluster)
+pdf('kmeans_4_klusteria.pdf')
+dev.off()
+
+pca_pistemaarat[klusterit_kmeans2$cluster==3,] #130, 296, 2047
+pca_pistemaarat[klusterit_kmeans$cluster==3,] #130, 296, 2047
+
+
+# Kyseiset kolme havaintoa muodostavat edelleen oman klusterinsa
+# poistetaan havainnot ja palataan viiteen klusteriin
+# (kolmen havainnon perusteella ei järkevää rakentaa asiakassegmenttiä)
+pca_pistemaarat_klusterit <- pca_pistemaarat[klusterit_kmeans2$cluster!=3,]
+
+# Poistetaan klusterisarake
+klusterit_maara <- 5
+klusterit_hclust <- hclust(dist(pca_pistemaarat_klusterit), method="average")
+# Etsitään keskukset
+klusterit_keskukset <- as.matrix(tapply(pca_pistemaarat_klusterit, list(rep(cutree(klusterit_hclust, klusterit_maara), ncol(pca_pistemaarat_klusterit)), col(pca_pistemaarat_klusterit)), mean))
+colnames(klusterit_keskukset) <- as.list(dimnames(pca_pistemaarat_klusterit)[[2]])
+klusterit_kmeans3 <- kmeans(pca_pistemaarat_klusterit, centers=klusterit_keskukset)
+plotcluster(pca_pistemaarat_klusterit, klusterit_kmeans3$cluster)
+pdf('kmeans_5_klusteria_b.pdf')
+dev.off()
+
+# Saadaan selkeät kolme klusteria
+# klusterit 1 ja 3 ovat vahvasti päällekäisiä, joten ne
+# yhdistetään ne
+pca_pistemaarat_klusterit <- pca_pistemaarat[klusterit_kmeans2$cluster!=3,]
+
+distances <- sqrt(rowSums((pca_pistemaarat - klusterit_keskukset)^2))
+
 # 4. Käytä näitä uusia muuttujia klusterianalyysissä, 
 # jossa muodostat asiakasryhmiä tilanteeseen sopivilla 
 # menetelmillä. Kuvaile muodostamiasi ryhmiä. 
-
