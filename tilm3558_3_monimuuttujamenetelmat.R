@@ -16,7 +16,7 @@ lataa_kirjasto <- function(kirjasto) {
 }
 
 # Ladataan/asennetaan käytetyt kirjastot
-lapply(c("psych", "corrplot", "nFactors", "GPArotation", "mclust", "modeltools", "fpc", "cluster"), lataa_kirjasto)
+lapply(c("psych", "corpcor", "corrplot", "nFactors", "GPArotation", "mclust", "modeltools", "fpc", "cluster"), lataa_kirjasto)
 
 # Funktio poikkeavien havaintojen poistamiseen klusterista
 poikkeavatHavainnot <- function(data, klusteri_kmeans, klusteri_numero, havaintojenMaara=1, poisto=FALSE) {
@@ -95,6 +95,26 @@ pudotettavat <- c("asuntolaina_b_kpl_luok", "vakuutus_b_luok", "vakuutus_c_luok"
 
 # Pudotetaan nämä
 pankkiotos_pca_edit <- pankkiotos_pca[,!(names(pankkiotos_pca) %in% pudotettavat)]
+
+# Luodaan anti image -korrelaatiomatriisia
+antiImage <- cor2pcor(cor(pankkiotos_pca_edit))*-1 # Osittaiskorrelaatiomatriisi * -1
+# Korvataan lävistäjä
+diag(antiImage) <- as.vector(KMO(pankkiotos_pca_edit)$MSAi) # MSA-arvot vektorina
+
+# Anti image -matriisi, jossa yhdeksän ensimmäistä muuttujaa
+#            [,1]       [,2]        [,3]       [,4]       [,5]        [,6]      [,7]        [,8]       [,9]
+# [1,]  0.8658202 -0.3465899 -0.18074289  0.0321246 -0.0036200 -0.03898437 0.0184956 -0.0069339  0.1221809
+# [2,] -0.3465899  0.8489369 -0.02921377  0.0255790 -0.0359194 -0.06068759 0.0919892  0.0318555 -0.1080796
+# [3,] -0.1807429 -0.0292138  0.70529886 -0.0113844  0.0700977 -0.64620256 0.0145237 -0.0121349  0.0417501
+# [4,]  0.0321246  0.0255790 -0.01138445  0.8908980 -0.0524762  0.01414464 -0.0032462 -0.0014667 -0.0701634
+# [5,] -0.0036200 -0.0359194  0.07009772 -0.0524762  0.6574366 -0.14474710 -0.0197016 -0.0233843  0.0109619
+# [6,] -0.0389844 -0.0606876 -0.64620256  0.0141446 -0.1447471  0.58503483 -0.0166150  0.0129481 -0.0275446
+# [7,]  0.0184956  0.0919892  0.01452367 -0.0032462 -0.0197016 -0.01661504 0.6347396  0.0729614  0.0267469
+# [8,] -0.0069339  0.0318555 -0.01213485 -0.0014667 -0.0233843  0.01294808 0.0729614  0.2853626 -0.0142156
+# [9,]  0.1221809 -0.1080796  0.04175006 -0.0701634  0.0109619 -0.02754464 0.0267469 -0.0142156  0.6234076 
+
+# Matriisin luvut suurempia diagonaalilla kuin sen ulkopuolella,
+# myös muuttujilla 10-33.
 
 # Kaiser-Meyer-Olkin (KMO) Measure of Sampling Adequacy
 KMO(pankkiotos_pca_edit)[[1]] # 0.718899 > 0.6
