@@ -1,7 +1,7 @@
 #########################################
 # TILM3558 Harjoitustyö, Osa 3, R-koodi #
 # Lasse Rintakumpu, 63555               #
-# 28.8.2015                             #
+# 31.8.2015                             #
 #########################################
 
 # Asetetaan työhakemisto
@@ -65,7 +65,7 @@ cor.mtest <- function(mat, conf.level = 0.95) {
       } else { sig.mat[i,j] <- sig.mat[j,i] <- TRUE }
     }
   }
-  # return(list(p.mat, lowCI.mat, uppCI.mat))
+  
   # Palauttaa listan, jossa merkitsevät korrelaatiot TRUE
   return(sig.mat)
 }
@@ -96,12 +96,12 @@ pudotettavat <- c("asuntolaina_b_kpl_luok", "vakuutus_b_luok", "vakuutus_c_luok"
 # Pudotetaan nämä
 pankkiotos_pca_edit <- pankkiotos_pca[,!(names(pankkiotos_pca) %in% pudotettavat)]
 
-# Luodaan anti image -korrelaatiomatriisia
+# Luodaan anti image -korrelaatiomatriisi
 antiImage <- cor2pcor(cor(pankkiotos_pca_edit))*-1 # Osittaiskorrelaatiomatriisi * -1
-# Korvataan lävistäjä
+# Korvataan lävistäjä MSA-arvoilla
 diag(antiImage) <- as.vector(KMO(pankkiotos_pca_edit)$MSAi) # MSA-arvot vektorina
 
-# Anti image -matriisi, jossa yhdeksän ensimmäistä muuttujaa
+# Anti image -matriisi yhdeksän ensimmäisen muuttujan osalta
 #            [,1]       [,2]        [,3]       [,4]       [,5]        [,6]      [,7]        [,8]       [,9]
 # [1,]  0.8658202 -0.3465899 -0.18074289  0.0321246 -0.0036200 -0.03898437 0.0184956 -0.0069339  0.1221809
 # [2,] -0.3465899  0.8489369 -0.02921377  0.0255790 -0.0359194 -0.06068759 0.0919892  0.0318555 -0.1080796
@@ -135,11 +135,12 @@ shapiro.test(pankkiotos_pca_edit[,sample(1:33,1)]) # W = 0.6581, p-value < 2.2e-
 #############################
 
 # Pyritään määrittelemään pääkomponenttien lukumäärä automaattisesti
-komponenttien_maara <- VSS(pankkiotos_pca_edit, n=20, rotate="promax", fm="pc", diagonal=FALSE)
+komponenttien_maara <- VSS(pankkiotos_pca_edit, n=20, rotate="promax", fm="pc", diagonal=FALSE, plot=TRUE)
 pdf('pankkiotos_vss.pdf')
 dev.off()
 
 # Kaavion perusteella n. 80% sopivuus saavutetaan n. 8 pääkomponentille
+# The Velicer MAP achieves a minimum of 0.02  with  4  factors 
 
 #     vss1 vss2   map dof chisq prob sqresid  fit 
 # 1  0.506 0.00 0.021   0    NA   NA    37.9 0.51
@@ -246,6 +247,7 @@ as.matrix(malli_pca2$communality)
 # luottokortteja_yhteensa_luok   0.3368983
 # Pidetään muuttujat kuitenkin mukana mallissa
 
+# Lataukset muuttujittain
 malli_pca2$loadings
 
 # PC1: automaattinostoja_luok, pankkikorttilkm_luok, maksuautomaattitapahtumia_luok,
@@ -287,7 +289,7 @@ klusterit_hclust <- hclust(dist(pca_pistemaarat), method="average")
 klusterit_keskukset <- as.matrix(tapply(pca_pistemaarat, list(rep(cutree(klusterit_hclust, klusterit_maara), ncol(pca_pistemaarat)), col(pca_pistemaarat)), mean))
 colnames(klusterit_keskukset) <- as.list(dimnames(pca_pistemaarat)[[2]])
 
-# Siirytään k-means klusterointiin, käytetään hierarkisella
+# Siirytään k-means klusterointiin, käytetään hierarkkisella
 # klusteroinnilla haettuja keskuksia
 klusterit_kmeans <- kmeans(pca_pistemaarat, centers=klusterit_keskukset)
 # cluster means
@@ -358,12 +360,33 @@ klusterit_kmeans3$size
 #      1   2   3   4   5
 #[1] 445  60 294  33 165
 
+
+par(mfrow=c(2,1))
+klusterit_maara <- 3
+klusterit_hclust <- hclust(dist(pca_pistemaarat_klusterit), method="ward")
+# Etsitään keskukset
+klusterit_keskukset <- as.matrix(tapply(pca_pistemaarat_klusterit, list(rep(cutree(klusterit_hclust, klusterit_maara), ncol(pca_pistemaarat_klusterit)), col(pca_pistemaarat_klusterit)), mean))
+colnames(klusterit_keskukset) <- as.list(dimnames(pca_pistemaarat_klusterit)[[2]])
+klusterit_kmeans4 <- kmeans(pca_pistemaarat_klusterit, centers=klusterit_keskukset, iter.max=50)
+plotcluster(pca_pistemaarat_klusterit, klusterit_kmeans4$cluster)
+
+klusterit_maara <- 4
+klusterit_hclust <- hclust(dist(pca_pistemaarat_klusterit), method="ward")
+# Etsitään keskukset
+klusterit_keskukset <- as.matrix(tapply(pca_pistemaarat_klusterit, list(rep(cutree(klusterit_hclust, klusterit_maara), ncol(pca_pistemaarat_klusterit)), col(pca_pistemaarat_klusterit)), mean))
+colnames(klusterit_keskukset) <- as.list(dimnames(pca_pistemaarat_klusterit)[[2]])
+klusterit_kmeans4 <- kmeans(pca_pistemaarat_klusterit, centers=klusterit_keskukset, iter.max=50)
+plotcluster(pca_pistemaarat_klusterit, klusterit_kmeans4$cluster)
+
+pdf('kmeans_3-4_klusteria.pdf')
+dev.off()
+
 # Mahdolliset asiakassegmentit =>
-# 1: Tiliasiakkaat (käyttö- ja säästö) 2: Osakeasiakkaat 3: Laina-asiakkaat
-# Rahastot suht tasaisesti klustereiden 2, 3 ja 4 kesken
-# Vakuutukset riippuen yrityksen strategiasta vakuutusten suhteen
+# 1: Tiliasiakkaat (käyttö- ja säästö) 
+# 2: Osakeasiakkaat 3: Laina-asiakkaat
 
 # Suurin klusteri no 1 ... passiiviset asiakkaat
-# myyntipotentiaali mutta jos ei ostohalukkuutta, kannattaa klusterilta 
+# jos ei uusien palvelujen ostohalukkuutta, kannattaa klusterilta 
 # todennäköisesti alkaa periä suurempia "tilinhoito"- ja "palvelu"maksuja,
-# mitä on helppo perustella esim. kasvaneilla kustannuksilla
+# mikä on helppo perustella esim. kasvaneilla kustannuksilla (vaikka tosiasiassa
+# kustannukset ovat erityisesti irtisanomisten myötä pienentyneet)
